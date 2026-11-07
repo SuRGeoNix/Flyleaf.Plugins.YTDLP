@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flyleaf Browser Cookies</title>
+<style>
+  body { font: 14px system-ui, sans-serif; max-width: 780px; margin: 32px auto;
+    padding: 0 20px; color: #1d2939; background: #fafbfc; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 17px; margin-top: 32px; }
+  p { line-height: 1.5; color: #475467; }
+  .item { background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 14px; margin: 8px 0; display: flex; align-items: center; gap: 12px; }
+  .info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .path { font-size: 12px; color: #667085; margin-top: 4px; }
+  button { border: 1px solid #98a2b3; background: white; border-radius: 6px;
+    padding: 7px 12px; cursor: pointer; }
+  button.primary { background: #155eef; border-color: #155eef; color: white; }
+  .warning { padding: 12px; border: 1px solid #f5bd68; border-radius: 8px;
+    color: #9a4800; background: #fff9ed; }
+  label { display: flex; gap: 8px; align-items: flex-start; }
+  .empty { color: #667085; font-style: italic; }
+</style>
+</head>
+<body>
+<h1>Flyleaf Browser Cookies</h1>
+<p>Applications can request cookies from this browser only after you authorize them.
+Cookie values are delivered to the authorized local application, not stored here.</p>
+<h2>Approval requests</h2><div id="pending"></div>
+<h2>Trusted applications</h2><div id="trusted"></div>
+<h2>Connection</h2>
+<p>If you installed the native host while the browser was already open, reconnect it once.</p>
+<button id="reconnect">Reconnect browser bridge</button>
+<h2>Advanced</h2>
+<div class="warning"><label><input type="checkbox" id="allowAll">
+<span><strong>Allow all local applications</strong><br>
+Disables application pairing. Any program running as your Windows user could request browser cookies,
+including login sessions. Use only on a trusted development machine.</span></label></div>
+<p id="status" aria-live="polite"></p>
+<script src="options.js"></script>
+</body>
+</html>

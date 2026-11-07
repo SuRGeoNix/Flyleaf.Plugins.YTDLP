@@ -1,0 +1,23 @@
+# .NET / Visual Studio
+.vs/
+**/bin/
+**/obj/
+**/[Dd]ebug/
+**/[Rr]elease/
+TestResults/
+*.user
+*.suo
+*.rsuser
+*.pdb
+
+# Local secrets and generated release outputs
+.flyleaf-browser-client-key
+**/.flyleaf-browser-client-key
+.env
+*.pfx
+*.snk
+/dist/
+/component-versions.json
+/release-notes.md
+__pycache__/
+*.pyc

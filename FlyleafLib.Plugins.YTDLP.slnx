@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="BrowserHost/BrowserHost.csproj" />
+  <Project Path="Plugin/Plugin.csproj" />
+</Solution>

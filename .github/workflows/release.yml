@@ -1,0 +1,212 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extension-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test extension
+        run: node Tests/extension.test.cjs
+      - name: Test release metadata and version rules
+        run: python -m unittest discover -s Tests -p 'test_release_info.py' 
+
+  windows-build:
+    runs-on: windows-latest
+    needs: extension-tests
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate release version and extension metadata
+        shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml]$project = Get-Content Plugin/Plugin.csproj
+          $pluginVersion = [string]$project.Project.PropertyGroup.Version
+          if ($pluginVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid plugin version $pluginVersion" }
+          if ($env:REF_TYPE -eq 'tag' -and $env:REF_NAME -ne "v$pluginVersion") {
+            throw "Tag $env:REF_NAME does not match plugin version v$pluginVersion"
+          }
+          $extension = Get-Content BrowserExtension/manifest.json -Raw | ConvertFrom-Json
+          if ($extension.manifest_version -ne 3 -or !$extension.version) { throw 'Invalid browser extension manifest' }
+          $manager = Get-Content Plugin/BrowserHostManager.cs -Raw
+          if (!$manager.Contains('SuRGeoNix/Flyleaf.Plugins.YTDLP')) { throw 'Host update repository has not been updated' }
+
+      - name: Build plugin against FlyleafLib NuGet
+        shell: pwsh
+        run: dotnet build Plugin/Plugin.csproj -c Release
+
+      - name: Publish Native AOT host (win-x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish BrowserHost/BrowserHost.csproj -c Release -r win-x64 -p:PublishProfile=FolderProfile -o "$env:RUNNER_TEMP\flyleaf-cookie-host"
+          if ($LASTEXITCODE -ne 0) { throw 'Native AOT publish failed' }
+          if (!(Test-Path "$env:RUNNER_TEMP\flyleaf-cookie-host\Flyleaf.BrowserCookieHost.exe")) {
+            throw 'Native AOT host executable was not published'
+          }
+
+      - name: Package release assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist/host, dist/extension, dist/plugin/Plugins/YTDLP | Out-Null
+          python Scripts/release_info.py metadata --output dist/component-versions.json
+          if ($LASTEXITCODE -ne 0) { throw 'Component metadata generation failed' }
+          $versions = Get-Content dist/component-versions.json -Raw | ConvertFrom-Json
+          $extensionZip = "Flyleaf.BrowserExtension-v$($versions.extension.version).zip"
+          $hostExe = "$env:RUNNER_TEMP\flyleaf-cookie-host\Flyleaf.BrowserCookieHost.exe"
+          $actualHost = [version](Get-Item $hostExe).VersionInfo.FileVersion
+          $expectedHost = [version]$versions.host.version
+          if ($actualHost.Major -ne $expectedHost.Major -or
+              $actualHost.Minor -ne $expectedHost.Minor -or
+              $actualHost.Build -ne $expectedHost.Build) {
+            throw "Native host file version $actualHost differs from project version $expectedHost"
+          }
+          Copy-Item $hostExe dist/host/
+          $hostCompatibility = @{ minProtocol = $versions.host.minProtocol; maxProtocol = $versions.host.maxProtocol } | ConvertTo-Json -Compress
+          $hostCompatibility | Set-Content -NoNewline -Encoding utf8 dist/host/host-compat.json
+
+          $pluginOut = 'Plugin/bin/Release/net10.0-windows'
+          $pluginDll = Join-Path $pluginOut 'FlyleafLib.Plugins.YTDLP.dll'
+          if (!(Test-Path $pluginDll)) { throw 'Plugin DLL missing from build output' }
+          $actualPlugin = [version](Get-Item $pluginDll).VersionInfo.FileVersion
+          $expectedPlugin = [version]$versions.plugin.version
+          if ($actualPlugin.Major -ne $expectedPlugin.Major -or
+              $actualPlugin.Minor -ne $expectedPlugin.Minor -or
+              $actualPlugin.Build -ne $expectedPlugin.Build) {
+            throw "Plugin DLL file version $actualPlugin differs from project version $expectedPlugin"
+          }
+          Copy-Item $pluginDll dist/plugin/Plugins/YTDLP/
+          foreach ($suffix in @('.deps.json', '.pdb')) {
+            $file = Join-Path $pluginOut ("FlyleafLib.Plugins.YTDLP" + $suffix)
+            if (Test-Path $file) { Copy-Item $file dist/plugin/Plugins/YTDLP/ }
+          }
+
+          Copy-Item BrowserExtension/* dist/extension/ -Recurse
+          Compress-Archive -Path dist/host/* -DestinationPath dist/Flyleaf.BrowserCookieHost-win-x64.zip
+          Compress-Archive -Path dist/plugin/Plugins -DestinationPath dist/FlyleafLib.Plugins.YTDLP-win-x64.zip
+          Compress-Archive -Path dist/extension/* -DestinationPath "dist/$extensionZip"
+          $zipFiles = Get-ChildItem dist -File -Filter '*.zip'
+          if ($zipFiles.Count -ne 3 -or !(Test-Path "dist/$extensionZip")) {
+            throw 'Expected plugin, host and versioned extension ZIPs'
+          }
+          $files = @(Get-ChildItem dist -File -Filter '*.zip') + @(Get-Item dist/component-versions.json)
+          $lines = foreach ($file in ($files | Sort-Object Name)) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -Encoding utf8 dist/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: flyleaf-ytdlp-release-assets
+          path: |
+            dist/*.zip
+            dist/component-versions.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: windows-build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # Previous published tag is needed for component comparisons.
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: flyleaf-ytdlp-release-assets
+          path: dist
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+          test -s Flyleaf.BrowserCookieHost-win-x64.zip
+          test -s FlyleafLib.Plugins.YTDLP-win-x64.zip
+          test -s component-versions.json
+          extension_zip="Flyleaf.BrowserExtension-v$(python -c 'import json; print(json.load(open("component-versions.json"))["extension"]["version"])').zip"
+          test -s "$extension_zip"
+          unzip -p "$extension_zip" manifest.json | python -c 'import json,sys; a=json.load(sys.stdin); b=json.load(open("component-versions.json")); assert a["version"]==b["extension"]["version"]'
+          unzip -p Flyleaf.BrowserCookieHost-win-x64.zip host-compat.json | python -c 'import json,sys; a=json.load(sys.stdin); b=json.load(open("component-versions.json"))["host"]; assert a["minProtocol"]==b["minProtocol"] and a["maxProtocol"]==b["maxProtocol"]'
+      - name: Prepare component release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite" >&2
+            exit 1
+          fi
+          previous_tag="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
+          if [[ -n "$previous_tag" ]]; then
+            echo "Comparing component versions against $previous_tag"
+          else
+            echo "First release: no previous published release to compare"
+          fi
+          python Scripts/release_info.py notes \
+            --current dist/component-versions.json \
+            --previous-tag "$previous_tag" \
+            --output dist/release-notes.md
+          # Retain GitHub's generated commit/PR notes beneath the version table.
+          note_args=(gh api --method POST "repos/$GH_REPO/releases/generate-notes" -f "tag_name=$RELEASE_TAG")
+          if [[ -n "$previous_tag" ]]; then
+            note_args+=(-f "previous_tag_name=$previous_tag")
+          fi
+          if generated="$("${note_args[@]}" --jq .body)"; then
+            if [[ -n "$generated" ]]; then
+              printf '\n## Changes\n\n%s\n' "$generated" >> dist/release-notes.md
+            fi
+          else
+            echo '::warning::Unable to fetch GitHub-generated change notes; component versions are still available.'
+          fi
+          cat dist/release-notes.md
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          extension_zip="Flyleaf.BrowserExtension-v$(python -c 'import json; print(json.load(open("dist/component-versions.json"))["extension"]["version"])').zip"
+          gh release create "$RELEASE_TAG" \
+            dist/Flyleaf.BrowserCookieHost-win-x64.zip \
+            dist/FlyleafLib.Plugins.YTDLP-win-x64.zip \
+            "dist/$extension_zip" \
+            dist/component-versions.json \
+            dist/SHA256SUMS.txt \
+            --verify-tag --title "$RELEASE_TAG" --notes-file dist/release-notes.md --latest

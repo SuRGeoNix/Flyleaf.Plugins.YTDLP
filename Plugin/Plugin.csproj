@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>FlyleafLib.Plugins.YTDLP</AssemblyName>
+    <RootNamespace>FlyleafLib.Plugins</RootNamespace>
+    <Version>2.0.0</Version>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/BrowserCookieProtocol.cs" Link="BrowserCookieProtocol.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FlyleafLib" Version="[3.11.16,)" />
+  </ItemGroup>
+</Project>

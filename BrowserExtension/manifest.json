@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Flyleaf Browser Cookies",
+  "description": "On-demand normal/private browser cookies for Flyleaf media extraction.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "cookies",
+    "nativeMessaging",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA22esC62+a50eNSLA4ECPU1Pf/cba4hpKTVqSQGaP62zfQ9oKe+YgvGTY6iAura/fBF0GIR+BCJEgYlfTqfDD2dGKlT52cvOdFkVQhtDVHRo6+S8jYhGTKeDuj11ez78B5UoiIAXGjNs/5rT0qK9jfVdZ6c4kRFG1oAcGH9wowVaBa7Q0/lL+xXUdnNtESzNM/ftgdaPoG93TpyXkJcA9wintlcy6o/MihuWGBMdDf1S9gVHWZrfzrK4Kc8gqwJqiCjbcXNC32Vw1nJW6r5JFs7gcXNL1umEqhOgEhAHxXDZf30v+aQcw+xFVupiRS0jkfxjPb/Fbw/h1EdyfniLkhwIDAQAB",
+  "incognito": "split",
+  "options_page": "options.html"
+}
