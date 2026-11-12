@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -23,6 +23,27 @@ public class YTDLP : PluginBase, IOpen, ISuggestPlaylistItem, ISuggestExternalAu
     public new int Priority { get; set; } = 1999;
 
     private static readonly JsonSerializerOptions JsonOptions = new();
+
+    public override Dictionary<string, string> GetDefaultOptions() => new()
+    {
+        { "ExtraArguments",             "" },
+        { "OpenTimeoutSeconds",         "60" },
+        { "ForceExtract",               "false" },
+        { "ForwardCookies",             "true" },
+        { "UseHttpChunkSize",           "true" },
+        { "BrowserCookies",             "false" },
+        { "BrowserCookiesSource",       "Auto" },
+        { "BrowserCookiesMode",         "Normal" },
+        { "BrowserCookiesTimeoutMs",    "2000" },
+        { "BrowserCookiesCacheSeconds", "120" },
+        { "AllowTranslatedSubtitles",   "false" },
+        { "PlaylistBatchSize",          "20" },
+        { "PlaylistBatchDelayMs",       "50" },
+        { "PlaylistMaxItems",           "100" },
+        { "StreamRefreshMinutes",       "15" },
+        { "MaxAvailabilityWaitSeconds", "30" },
+        { "PreferredItemWaitMs",        "5000" }
+    };
 
     // Skip known direct media URLs without a network request.
     private static readonly HashSet<string> DirectExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -183,26 +204,6 @@ public class YTDLP : PluginBase, IOpen, ISuggestPlaylistItem, ISuggestExternalAu
             return matched;
         }
     }
-
-    public override Dictionary<string, string> GetDefaultOptions() => new()
-    {
-        { "ExtraArguments", "" },
-        { "OpenTimeoutSeconds", "60" },
-        { "ForceExtract", "false" },
-        { "ForwardCookies", "true" },
-        { "BrowserCookies", "false" },
-        { "BrowserCookiesSource", "Auto" },
-        { "BrowserCookiesMode", "Normal" },
-        { "BrowserCookiesTimeoutMs", "2000" },
-        { "BrowserCookiesCacheSeconds", "120" },
-        { "AllowTranslatedSubtitles", "false" },
-        { "PlaylistBatchSize", "20" },
-        { "PlaylistBatchDelayMs", "50" },
-        { "PlaylistMaxItems", "100" },
-        { "StreamRefreshMinutes", "15" },
-        { "MaxAvailabilityWaitSeconds", "30" },
-        { "PreferredItemWaitMs", "5000" }
-    };
 
     public override void OnInitializing() => DisposeInternal();
     public override void Dispose() => DisposeInternal();
@@ -982,6 +983,9 @@ public class YTDLP : PluginBase, IOpen, ISuggestPlaylistItem, ISuggestExternalAu
     {
         var formats = info.formats ?? new List<Format> { info };
         RecoverMissingWidths(formats);
+        bool useHttpChunkSize = Options == null ||
+            !Options.TryGetValue("UseHttpChunkSize", out string chunkOption) ||
+            !bool.TryParse(chunkOption, out bool chunkEnabled) || chunkEnabled;
         int added = 0;
 
         var seenFormats = new HashSet<string>(StringComparer.Ordinal);
@@ -1026,6 +1030,13 @@ public class YTDLP : PluginBase, IOpen, ISuggestPlaylistItem, ISuggestExternalAu
                     Codec       = fmt.acodec,
                     Language    = Language.Get(fmt.language)
                 };
+            }
+
+            if (useHttpChunkSize)
+            {
+                long requestSize = GetHttpRequestSize(fmt, info);
+                if (requestSize > 0)
+                    ext.FormatOpt = new() { ["request_size"] = requestSize.ToString(CultureInfo.InvariantCulture) };
             }
 
             AddHeaders(ext, fmt, info);
@@ -1283,6 +1294,21 @@ public class YTDLP : PluginBase, IOpen, ISuggestPlaylistItem, ISuggestExternalAu
                (string.Equals(fmt.ext, "mp4", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(fmt.ext, "m4v", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(fmt.ext, "mov", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static long GetHttpRequestSize(Format fmt, YTDLPJson info)
+    {
+        if (!IsHttpUrl(fmt.url) || IsHls(fmt.protocol) || IsM3u8Url(fmt.url) ||
+            string.Equals(fmt.ext, "m3u8", StringComparison.OrdinalIgnoreCase) ||
+            fmt.fragments?.Count > 0 ||
+            (!string.IsNullOrEmpty(fmt.protocol) && !IsDirectHttp(fmt.protocol)))
+            return 0;
+
+        long? extractorSize = fmt.downloader_options?.http_chunk_size ?? info.downloader_options?.http_chunk_size;
+        if (extractorSize.HasValue)
+            return Math.Max(0, extractorSize.Value * 95 / 100); // 95% to avoid hitting upper limit
+
+        return 0;
     }
 
     private static bool IsDirectHttp(string protocol)

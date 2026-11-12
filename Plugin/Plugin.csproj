@@ -1,15 +1,39 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <AssemblyName>FlyleafLib.Plugins.YTDLP</AssemblyName>
     <RootNamespace>FlyleafLib.Plugins</RootNamespace>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <PackageId>FlyleafLib.Plugins.YTDLP</PackageId>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <BuildOutputTargetFolder>tools</BuildOutputTargetFolder>
+    <Authors>SuRGeoNix</Authors>
+    <Description>yt-dlp media playback plugin for FlyleafLib, with optional Chrome/Brave browser cookie integration</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>LGPL-3.0-only</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/SuRGeoNix/Flyleaf.Plugins.YTDLP</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/SuRGeoNix/Flyleaf.Plugins.YTDLP</PackageProjectUrl>
+    <PackageTags>flyleaf plugin yt-dlp youtube media video</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Shared/BrowserCookieProtocol.cs" Link="BrowserCookieProtocol.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FlyleafLib" Version="[3.11.16,)" />
+    <PackageReference Include="FlyleafLib" Version="[3.11.18,)" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../Packaging/Plugin.targets"
+          Pack="true" PackagePath="buildTransitive/FlyleafLib.Plugins.YTDLP.targets" Visible="false" />
+    <None Include="../Packaging/_._"
+          Pack="true" PackagePath="lib/net10.0-windows7.0/_._" Visible="false" />
+    <None Include="../README.md"
+          Pack="true" PackagePath="README.md" Visible="false" />
   </ItemGroup>
 </Project>

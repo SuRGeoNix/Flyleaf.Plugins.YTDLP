@@ -43,6 +43,11 @@ public class FormatFragment
     public string path { get; set; }
 }
 
+public class DownloaderOptions
+{
+    public long? http_chunk_size { get; set; }
+}
+
 public class Format
 {
     public string format_id           { get; set; }
@@ -74,6 +79,7 @@ public class Format
 
     public Dictionary<string, string> http_headers { get; set; }
     public string cookies { get; set; }
+    public DownloaderOptions downloader_options { get; set; }
 
     // Presence of fragments matters: a DASH fragment/base URL is not
     // interchangeable with a directly playable media URL.
